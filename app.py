@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request
+from flask import Flask, render_template, request, jsonify
 import pickle
 from nltk.stem import WordNetLemmatizer
 import string
@@ -13,29 +13,32 @@ with open(model_file_path, "rb") as model_file:
 
 vectorizer_file_path = "TfidfVectorizer.pkl"
 with open(vectorizer_file_path, "rb") as vectorizer_file:
-    
     vectorizer = pickle.load(vectorizer_file)
-stopword = set(stopwords.words("english"))
 
-def preprocess_text(text):
-    remove_punc = (char if char not in string.punctuation else ' ' for char in text)
-    clean_words = "".join(remove_punc)
-    text = [word.lower() for word in clean_words.split() if word.lower() not in stopword]
-    return text
-
+stopwords_set = set(stopwords.words("english"))
 lemmatizer = WordNetLemmatizer()
 
-def lemmatize_text(text):
-    lemmatized_text = " ".join([lemmatizer.lemmatize(word) for word in text])
-    return lemmatized_text
+def preprocess_text(text):
+    # Remove punctuation
+    text = "".join([char if char not in string.punctuation else ' ' for char in text])
+    # Tokenize, lowercase, and remove stopwords
+    tokens = [word.lower() for word in text.split() if word.lower() not in stopwords_set]
+    return tokens
+
+def lemmatize_text(tokens):
+    lemmatized_tokens = [lemmatizer.lemmatize(word) for word in tokens]
+    return " ".join(lemmatized_tokens)
+
 @app.route('/')
 def home():
     return render_template('index.html')
 
-@app.route('/predict', methods=['GET', 'POST'])
+@app.route('/predict', methods=['POST'])
 def predict():
     if request.method == 'POST':
         news_text = request.form['news_text']
+        if not news_text:
+            return jsonify({'error': 'Empty input!'}), 400
         
         # Preprocess and vectorize the input text
         preprocessed_text = preprocess_text(news_text)
@@ -44,21 +47,22 @@ def predict():
 
         # Make prediction using the loaded model
         prediction = loaded_model.predict(text_vector)
-        
-        model_name = "Logistic Regression"
 
         if prediction[0] == 1:
             result = "Real News"
         else:
             result = "Fake News"
 
-        print(f"Model: {model_name}")
-        print("Prediction:", result)
+        response = {
+            'prediction': result,
+            'news_text': news_text
+        }
 
-        return render_template('index.html', prediction=result, news_text=news_text)
+        return jsonify(response)
     else:
-        return "Method not allowed", 405
+        return jsonify({'error': 'Method not allowed'}), 405
 
 if __name__ == '__main__':
     app.run(debug=True)
+
 
